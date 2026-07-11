@@ -2,7 +2,7 @@
 //  PencilStrokeArray.swift
 //  MoonStroke
 //
-//  Created by Adam Mcgregor on 9/23/24.
+//  Created on 9/23/24.
 //
 // TODO: add nib-tip, gradient, whatever I come up with (as of after 2024.09.23.101106)
 
@@ -12,7 +12,31 @@ struct PencilStrokesArray: Codable {
 	
 	
   var value: [PencilStroke]
-	
+  var isEmpty: Bool {
+    return value.isEmpty
+  }
+  var first: PencilStroke? {
+    return value.first
+  }
+  var count: Int {
+    return value.count
+  }
+  var indices: Range<Int> {
+    return value.indices
+  }
+  subscript(index: Int) -> PencilStroke {
+    get {
+      return value[index]
+    }
+    set {
+      if index >= 0 && index < value.count {
+        value[index] = newValue
+      }
+    }
+  }
+  func firstIndex(of ps: PencilStroke) -> Int? {
+    return self.value.firstIndex(of: ps)
+  }
 	//var sortedByX: [(index: Int, value: PencilStroke)]
   
   init() { self.value = [] }
