@@ -2,8 +2,8 @@
 //  CGMathExtensions.swift
 //  draw line fit
 //
-//  Created by Adam McGregor on 2/23/18.
-//  Copyright © 2018 Adam. All rights reserved.
+//  Created on 2/23/18.
+//  Copyright © 2018. All rights reserved.
 //
 
 /*
@@ -44,6 +44,9 @@ extension CGRect {
     set {
       origin = newValue - CGVector(dx: width, dy: height) / 2
     }
+  }
+  init(center: CGPoint, size: CGSize) {
+    self.init(x: center.x - size.width/2, y: center.y - size.height/2, width: size.width, height: size.height)
   }
 }
 
@@ -129,10 +132,15 @@ extension CGPoint {
   
   /// scale and translate from bounding box into the target box
   func fit(from b1: CGRect, to b2: CGRect) -> CGPoint {
-    let scale1 = b2.width/b1.width
-    let scale2 = b2.height/b1.height
-    let newX = (x - b1.origin.x)*scale1 + b2.origin.x
-    let newY = (y - b1.origin.y)*scale2 + b2.origin.y
+    let scaleX = b2.width/b1.width
+    let scaleY = b2.height/b1.height
+    
+    let centerX = b1.origin.x //+ b1.width / 2
+    let centerY = b1.origin.y //+ b1.height / 2
+    
+    let newX = (x - centerX)*scaleX + b2.origin.x //+ b2.width/2
+    let newY = (y - centerY)*scaleY + b2.origin.y //+ b2.height/2
+    //debugPrint("B2B", )
     return CGPoint(x: newX, y: newY)
   }
   
@@ -215,6 +223,20 @@ extension CGVector {
     } else {
       return nil
     }
+  }
+}
+import UIKit // need for UIColor
+
+extension UIColor {
+  func distance(to otherColor: UIColor) -> CGFloat {
+    var r1: CGFloat = 0, g1: CGFloat = 0, b1: CGFloat = 0, a1: CGFloat = 0
+    var r2: CGFloat = 0, g2: CGFloat = 0, b2: CGFloat = 0, a2: CGFloat = 0
+    
+    self.getRed(&r1, green: &g1, blue: &b1, alpha: &a1)
+    otherColor.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
+    
+    // 3D Euclidean distance formula
+    return sqrt(pow((r1 - r2), 2) + pow((g1 - g2), 2) + pow((b1 - b2), 2))
   }
 }
 
