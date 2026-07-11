@@ -1,39 +1,50 @@
 import SwiftUI
 
 struct PencilSample: Codable {
-	
-	static let N = 7 // the size of the flat_0_1, or other full dimension array
-	
+  
+  static let N = 7 // the size of the flat_0_1, or other full dimension array
+  
   var location: CGPoint // x and y
   var timestamp: TimeInterval // t
   var force: CGFloat // 0,0,0,force, asimuth, altitude, rollAngle weights
   var azimuth: CGFloat  // -.pi -> .pi where
   var altitude: CGFloat // 0 -> .pi/2 -- realistically 0.25 -> 1.5
   var rollAngle: CGFloat // -.pi -> .pi where zero has pencil-flat up top
-	
-//	enum CodingKeys: String, CodingKey { // do not need to explicitly do this for Codable, but here it is for reference
-//		case location
-//		case timestamp
-//		case force
-//		case azimuth
-//		case altitude
-//		case rollAngle
-//	}
-	
-	
-	var flat_0_1: [CGFloat] {
-		return [location.x, // TODO: to norm position to 0-1 would require at least the full stroke bounding box...
-						location.y,
-						timestamp,
-						force,
-						norm_0_1_azimuth(azimuth),
-						norm_0_1_altitude(altitude),
-						norm_0_1_rollAngle(rollAngle)]
-	}
   
-//  var zero: PencilSample { // TODO: where would this go, do I want it? Is this how it would be done to have .zero return what I want
-//    return PencilSample() // maybe @inlinable public static var zero
-//  }
+  //	enum CodingKeys: String, CodingKey { // do not need to explicitly do this for Codable, but here it is for reference
+  //		case location
+  //		case timestamp
+  //		case force
+  //		case azimuth
+  //		case altitude
+  //		case rollAngle
+  //	}
+  
+  
+  var flat_0_1: [Double] {
+    let flat =  [location.x, // TODO: to norm position to 0-1 would require at least the full stroke bounding box...
+            location.y,
+            timestamp,
+            force,
+            norm_0_1_azimuth(azimuth),
+            norm_0_1_altitude(altitude),
+            norm_0_1_rollAngle(rollAngle)]
+    return flat.map { Double($0) }
+  }
+  
+  var flat: [Double] {
+    let flat =  [location.x, // TODO: to norm position to 0-1 would require at least the full stroke bounding box...
+                 location.y,
+                 timestamp,
+                 force,
+                 azimuth,
+                 altitude,
+                 rollAngle]
+    return flat.map { Double($0) }
+  }
+  //  var zero: PencilSample { // TODO: where would this go, do I want it? Is this how it would be done to have .zero return what I want
+  //    return PencilSample() // maybe @inlinable public static var zero
+  //  }
   
   
   init() {
@@ -52,6 +63,17 @@ struct PencilSample: Codable {
     azimuth = newTouch.azimuthAngle(in: view)
     altitude = newTouch.altitudeAngle
     rollAngle = newTouch.rollAngle
+  }
+  
+  init(flat: [Double]) {
+    self.location = CGPoint()
+    self.location.x = flat[0]
+    self.location.y = flat[1]
+    self.timestamp = flat[2]
+    self.force = flat[3]
+    self.azimuth = flat[4]
+    self.altitude = flat[5]
+    self.rollAngle = flat[6]
   }
   // copy constructor
   init(_ copy: PencilSample) {
@@ -89,6 +111,12 @@ struct PencilSample: Codable {
 		}
 		return zo
 	}
+  
+  func scaled(by x: Double) -> PencilSample {
+    return PencilSample(flat: self.flat.map { $0*x })
+  }
 	
-	
+
 }
+
+extension PencilSample: Equatable {}
