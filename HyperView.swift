@@ -247,28 +247,34 @@ final class HyperView: UIView {
 }
 
 extension HyperView {
-  func appendAndDraw(current touch: UITouch, with event: UIEvent?, drawIt: Bool) { 
-    
-    if let event = event { 
+  func appendAndDraw(current touch: UITouch, with event: UIEvent?, drawIt: Bool) { // drawit false for hiding some transforms
+    // COALESCED points can be 20+ points per frame with apple pencil
+    if let event = event { // also append coalesded touches
       if let coalescedTouches = event.coalescedTouches(for: touch) {
         for ct in coalescedTouches {
           self.currentStroke.append(ct, in: self)
-          if drawIt, currentStroke.count >= 2 {
-            let prev = currentStroke[currentStroke.count - 2]
-            let curr = currentStroke.last!
-            addSegmentLayer(from: prev, to: curr)
-
-      
+          if drawIt {
+            if currentStroke.count >= 2 {
+              let prev = currentStroke[currentStroke.count - 2]
+              let curr = currentStroke.last!
+              addSegmentLayer(from: prev, to: curr)
+            } else if currentStroke.count == 1 {
+              drawSinglePoint(currentStroke[0], layer)
+            }
           }
         }
       }
     }
-    
+    // NOT COALESCED
     self.currentStroke.append(touch, in: self)
-    if drawIt, currentStroke.count >= 2 {
-      let prev = currentStroke[currentStroke.count - 2]
-      let curr = currentStroke.last!
-      addSegmentLayer(from: prev, to: curr)
+    if drawIt {
+      if currentStroke.count >= 2 {
+        let prev = currentStroke[currentStroke.count - 2]
+        let curr = currentStroke.last!
+        addSegmentLayer(from: prev, to: curr)
+      } else if currentStroke.count == 1 {
+        drawSinglePoint(currentStroke[0], layer)
+      }
     }
   }
   func appendAs(final lastTouch: UITouch, with event: UIEvent?) {
