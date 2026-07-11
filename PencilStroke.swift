@@ -1,21 +1,47 @@
 import SwiftUI
 
 /// The pencil samples that were created together with a single stroke input of the pencil
-struct PencilStroke {
+struct PencilStroke: Equatable {
+  static func == (lhs: PencilStroke, rhs: PencilStroke) -> Bool {
+    return lhs.samples == rhs.samples // TODO: check this is not just reference pointer check
+  }
+  // equatable for the firstIndex(of:_)
   //var nib: Nib = Nib.default
-	static let qDist: CGFloat = 2.0 // the quadrance distance for determining unique point
+  // 8 seems slightly visible,
+  // I think 4 is fine
+  // 6 might truncate on VERY small strokes
+	static let qDist: CGFloat = 4.0 // the quadrance distance for determining unique point
   var samples:[PencilSample] // the array to hold all the samples in the stroke
   //var date: Date
 	var boundingBox = StrokeBoxer() // make it optional so that when loading can see it is needed to update
+  var isEmpty: Bool {
+    return samples.isEmpty
+  }
+  var first: PencilSample? {
+    return samples.first
+  }
+  var indices: Range<Int> {
+    return samples.indices
+  }
+  
+  func firstIndex(of ps: PencilSample) -> Int? {
+    return self.samples.firstIndex(of: ps)
+  }
+  
+  @inlinable public mutating func reserveCapacity(_ count: Int) {
+    self.samples.reserveCapacity(count)
+  }
 	
   //var lastPredictedSample: PencilSample? // want to hold only the latest prediction value
   //var mutablePath: CGMutablePath?
   subscript(index: Int) -> PencilSample {
+
     get {
+      assert(index >= 0 && index < samples.count, "Index \(index) PencilStroke OUT OF BOUNDS!")
       return samples[index]
     }
     set {
-      if index >= 0 && index < samples.count {
+      if index >= 0 && index < samples.count { // quiet fail on out of bounds set
         samples[index] = newValue
       }
     }
@@ -32,33 +58,36 @@ struct PencilStroke {
     samples = []
 		boundingBox = StrokeBoxer()
   }
+  
+  init(_ samplesArray: [PencilSample]) {
+    self.samples = samplesArray
+  }
+  
   init(sample: PencilSample) {
     samples = [sample]
 		boundingBox = StrokeBoxer(samples) // build/get the statistics for the samples
   }
 	// keep track of bounding box as new samples are appended
   mutating func append(sample: PencilSample) {
-    if let last = samples.last {
+    if var last = samples.last {
 			if (last.location - sample.location).quadrance < PencilStroke.qDist {
-				// TODO: add and replace if force or angle(width)is greater
+        if sample.force > last.force {
+          last.force = sample.force // add and replace if force or angle(width)is greater
+        }
+        
 				// TODO: or add a time duration element to the struct strokePoint
         return
       }
 			
     }
-		boundingBox.update(with: sample, at: samples.count) // update the bounding box properties
+    
+		boundingBox.update(with: sample, at: samples.count) // let the bounding box properties find max/min's
     samples.append(sample)
   }
   mutating func append(_ newTouch: UITouch, in view: UIView) {
 		let newSample = PencilSample(newTouch, in: view)
     
 		self.append(sample: newSample)
-    //dataToDrawIndex.append(touchesData.count - 1) // mark it as not drawn
-//    if let touchIndex = newTouch.estimationUpdateIndex {
-//      dataToUpdate[touchIndex] = touchesData.count - 1
-//    }
-//    let frame = CGRect(origin: newTouch.location(in: self), size: .zero)
-//    setNeedsDisplay(frame.insetBy(dx: -40, dy: -40)) // negative number on an inset works?
   }
 
   /// x coordinate is stroke angle of change, y coordinate is the sum of the distance changes
@@ -123,14 +152,8 @@ extension PencilStroke: Codable {
 }
 
 extension PencilStroke: Sequence {
-	func makeIterator() -> AnyIterator<PencilSample> {
-		var iteratorCount = 0
-		return AnyIterator{
-			if iteratorCount < samples.count {
-				iteratorCount += 1
-				return samples[iteratorCount - 1]
-			}
-			return nil
-		}
+  func makeIterator() -> IndexingIterator<[PencilSample]> {
+    return samples.makeIterator()
 	}
 }
+
