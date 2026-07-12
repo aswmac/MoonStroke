@@ -2,6 +2,8 @@ import UIKit
 import SwiftUI 
 
 
+
+
 enum InputEvent: Hashable {
   case fingerTap(postion: CGPoint)
   case doubleTap(position: CGPoint) 
@@ -35,7 +37,7 @@ struct InputRulesMap {
 
 final class HyperView: UIView {
   var nib_H: NibMatrix
-  var strokeData_H: PencilStrokesArray
+  @Binding var strokeData_H: PencilStrokesArray 
   
   private var lastFlattenTime: Date = .distantPast
   
@@ -58,11 +60,11 @@ final class HyperView: UIView {
     print("handled")
   }
 
-  init(samples: PencilStrokesArray, nibMat: NibMatrix, appHyperMode: HyperMode) {
+  init(samples: Binding<PencilStrokesArray>, nibMat: NibMatrix, appHyperMode: HyperMode) {
     
     
     self.state.strokesTransform = AnyTransform(StrokeToGaussian())
-    self.strokeData_H = samples
+    self._strokeData_H = samples
     self.state.isDrawing = true
     self.currentStroke = PencilStroke() 
     self.nib_H = nibMat
@@ -137,6 +139,8 @@ final class HyperView: UIView {
     
   }
   
+  
+  
   override func layoutSubviews() {
     super.layoutSubviews()
     
@@ -155,7 +159,13 @@ final class HyperView: UIView {
     circleLayer.path = circlePath.cgPath
     addSublayerAndCount(circleLayer)
   }
-
+  
+  
+  
+  
+  
+  
+  
   
   override func draw(_ layer: CALayer, in ctx: CGContext) { 
 
@@ -173,14 +183,16 @@ final class HyperView: UIView {
       return
     }
     
-    var previousSample = stroke[0]
-    drawSinglePoint(previousSample, layer) 
+    
+    drawSinglePoint(stroke[0], layer) 
     
     for i in 1..<stroke.count {
-      let sample = stroke[i]
-      addSegmentLayer(from: previousSample, to: sample) 
+      let prev = stroke[i - 1]
+      let curr = stroke[i]
+      let prevPrev = i >= 2 ? stroke[i - 2] : nil
+      let next = i + 1 < stroke.count ? stroke[i + 1] : nil
       
-      previousSample = sample
+      addCurveLayer(from: prev, to: curr, prevPrev: prevPrev, next: next)
     }
     
   }
@@ -208,6 +220,63 @@ final class HyperView: UIView {
     
   }
   
+  
+  private func addCurveLayer(from prev: PencilSample, to curr: PencilSample, prevPrev: PencilSample? = nil, next: PencilSample? = nil){
+    let (fillColor, fillSize) = nib_H.map(curr)
+    
+    let path = UIBezierPath()
+    let layer = CAShapeLayer()
+    
+    layer.strokeColor = fillColor.cgColor
+    layer.lineWidth = fillSize
+    layer.lineCap = .round
+    layer.lineJoin = .round
+    
+    
+    let p0 = prev.location
+    let p1 = curr.location
+    
+    let v1 = prevPrev.map { ($0.location - p0) } ?? (p1 - p0)
+    let v2 = next.map { _ in (next!.location - p1) } ?? (p1 - p0)
+    
+    let d1 = CGVector(dx: v1.x / 6, dy: v1.y / 6)
+    let d2 = CGVector(dx: v2.x / 6, dy: v2.y / 6)
+    
+    let c1 = p0 + d1
+    let c2 = p1 - d2
+    
+    path.move(to: p0)
+    path.addCurve(to: p1, controlPoint1: c1, controlPoint2: c2)
+    
+    layer.path = path.cgPath
+    addSublayerAndCount(layer)
+  }
+  
+  private func drawCurveInContext(from prev: PencilSample, to curr: PencilSample, prevPrev: PencilSample?, next: PencilSample?, context: CGContext) {
+    let (color, size) = nib_H.map(curr)
+    context.setStrokeColor(color.cgColor)
+    context.setLineWidth(size)
+    context.setLineCap(.round)
+    context.setLineJoin(.round)
+    
+    
+    let p0 = prev.location
+    let p1 = curr.location
+    
+    let v1 = prevPrev.map { ($0.location - p0) } ?? (p1 - p0)
+    let v2 = next.map { _ in (next!.location - p1) } ?? (p1 - p0)
+    
+    let d1 = CGVector(dx: v1.x / 6, dy: v1.y / 6)
+    let d2 = CGVector(dx: v2.x / 6, dy: v2.y / 6)
+    
+    let c1 = p0 + d1
+    let c2 = p1 - d2
+    
+    context.move(to: p0)
+    context.addCurve(to: p1, control1: c1, control2: c2)
+    context.strokePath()
+  }
+  
   fileprivate func addSublayerAndCount(_ newLayer: CALayer) {
     layerCount += 1
     layer.addSublayer(newLayer)
@@ -225,13 +294,15 @@ final class HyperView: UIView {
     guard !stroke.isEmpty else { return }
     guard var _ = state.strokesTransform else { return }
     
-  
-    var lastSample = stroke[0] 
-    
+    drawSinglePoint(stroke[0], layer)
+
     for i in 1..<stroke.count {
-      let sample = stroke[i]
-      addSegmentLayer(from: lastSample, to: sample)
-      lastSample = sample
+      let prev = stroke[i - 1]
+      let curr = stroke[i]
+      let prevPrev = i >= 2 ? stroke[i - 2] : nil
+      let next = i + 1 < stroke.count ? stroke[i + 1] : nil
+      
+      addCurveLayer(from: prev, to: curr, prevPrev: prevPrev, next: next)
     }
     
   }
@@ -247,9 +318,9 @@ final class HyperView: UIView {
 }
 
 extension HyperView {
-  func appendAndDraw(current touch: UITouch, with event: UIEvent?, drawIt: Bool) { // drawit false for hiding some transforms
-    // COALESCED points can be 20+ points per frame with apple pencil
-    if let event = event { // also append coalesded touches
+  func appendAndDraw(current touch: UITouch, with event: UIEvent?, drawIt: Bool) { 
+    
+    if let event = event { 
       if let coalescedTouches = event.coalescedTouches(for: touch) {
         for ct in coalescedTouches {
           self.currentStroke.append(ct, in: self)
@@ -265,7 +336,7 @@ extension HyperView {
         }
       }
     }
-    // NOT COALESCED
+    
     self.currentStroke.append(touch, in: self)
     if drawIt {
       if currentStroke.count >= 2 {
@@ -294,16 +365,20 @@ extension HyperView {
       let context = ctx.cgContext
       context.setShouldAntialias(true)
       context.setLineCap(.round)
+      context.setLineJoin(.round)
       
-      var previous = stroke[0]
-      drawSinglePointLayerInContext(previous, context: context)
+      var prevPrev: PencilSample? = nil
+      var prev = stroke[0]
+      drawSinglePointLayerInContext(prev, context: context)
       
       for i in 1..<stroke.count {
-        let sample = stroke[i]
-        drawSegmentInContext(from: previous, to: sample, context: context)
-        previous = sample
+        let curr = stroke[i]
+        drawCurveInContext(from: prev, to: curr, prevPrev: prevPrev, next: i + 1 < stroke.count ? stroke[i + 1] : nil, context: context)
+        prevPrev = prev
+        prev = curr
       }
     }
+
     Task { @MainActor in
       strokeCache[index] = image
       strokeCacheIndices.insert(index)
@@ -324,6 +399,8 @@ extension HyperView {
     context.addLine(to: curr.location)
     context.strokePath()
   }
+  
+  
   
   
   func appendTo(transformed touch: UITouch, with event: UIEvent?) {
@@ -584,7 +661,14 @@ extension HyperView {
   
 	
 	func imageFlatten() {
-
+		
+		
+		
+		
+		
+		
+		
+		
 			guard let image = self.captureViewImage() else {
 				
 				return
@@ -594,6 +678,11 @@ extension HyperView {
 				self.layerCount = 0
 				self.restoreViewFromImage(image)
 			
+		
+		
+		
+		
+		
 	}
   
   
@@ -736,29 +825,4 @@ extension HyperView {
   }
 }
 
-extension HyperView {
-  func sendSampleToServer(_ sample: PencilSample, isStart: Bool = false) {
-    let type = isStart ? "start" : "move"
-    let body: [String: Any] = [
-      "type": type,
-      "x": sample.location.x,
-      "y": sample.location.y
-    ]
-    
-      
-    
-    guard let jsonData = try? JSONSerialization.data(withJSONObject: body),
-          let url = URL(string: "https://aswmac.com/strokes-stream/add-stroke") else {
-      return
-    }
-    
-    var request = URLRequest(url: url)
-    request.httpMethod = "POST"
-    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    request.httpBody = jsonData
-    
-    
-    URLSession.shared.dataTask(with: request).resume()
-  }
-}
 
