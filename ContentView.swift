@@ -3,8 +3,10 @@ import SwiftUI
 struct ContentView: View {
   // The document's content array is passed as a binding
   @Binding var document_0000: PencilStrokesArray // struct PencilStrokesArray: Codable
-  @Bindable var appNib: NibMatrix // final class NibMatrix
-  @Bindable var appHyperMode: HyperMode
+//  @Bindable var appNib: NibMatrix // final class NibMatrix
+//  @Bindable var appHyperMode: HyperMode
+  var appNib = NibMatrix()
+  @State var appHyperMode = HyperMode(type: .pen) // state because the onChange watches it to trigger handleTypeChange()
   @State private var showMenu: Bool = false // Control menu visibility
   @State private var contextualPaletteAnchor: PopoverAttachmentAnchor?
   @State private var hoverPosition: CGPoint = .zero // postion of the pencil hovering
@@ -135,7 +137,7 @@ struct ContentView: View {
     switch appHyperMode.type {
     case .numCursor:
       self.appHyperMode.lastSqueezedPosition = lastSqueezedPosition
-      self.cursor = CGRect(center: lastSqueezedPosition, size: CGSize(width: 10, height: 10))
+      cursor = CGRect(center: lastSqueezedPosition, size: CGSize(width: 10, height: 30))
     case .pen:
       self.appNib.unInvert() // or "reset to normal"
       cursor = nil
@@ -283,7 +285,7 @@ struct MenuView: View { // TODO: allow drag to reorder tools in menu
   @Binding var showMenu_Menu: Bool
   @Bindable var appHyperMode: HyperMode // Handle to alter mode type
   static private var tools: [HyperModeType] = HyperModeType.allCases
-  private let itemsPerColumn: Int = 3
+  private let itemsPerColumn: Int = 9
   private var columns: [[HyperMode]] {
     stride(from: 0, to: MenuView.tools.count, by: itemsPerColumn).map { start in
       let end = min(start + itemsPerColumn, MenuView.tools.count)
@@ -296,6 +298,8 @@ struct MenuView: View { // TODO: allow drag to reorder tools in menu
     appHyperMode.set(type: tool) // side effects (notifications) on the set function, will call onTypeChanged which is defined on ContentView's onappear
     showMenu_Menu = false // dismiss on any selection-tap not just the n - 1 "changing" selections
     switch tool {
+    case .compass:
+      () //
     case .plus:
       appNib.sizeUp(row: NibMatrix.sizeRowIndices)
     case .minus:
