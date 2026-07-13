@@ -2,44 +2,9 @@ import UIKit
 import SwiftUI 
 
 
-
-
-enum InputEvent: Hashable {
-  case fingerTap(postion: CGPoint)
-  case doubleTap(position: CGPoint) 
-  case keyDown(charCap: Character) 
-  case keyUp(charCap: Character)
-}
-
-struct InputRulesMap {
-  typealias Rule = (InputEvent, DrawingState) -> DrawingState?
-  var rules: [Rule]
-  
-  init(rules: [Rule] = []) {
-    self.rules = rules
-  }
-  
-  mutating func append(_ rule: @escaping Rule) {
-    rules.append(rule)
-  }
-  
-  func resolve(_ input: InputEvent, with state: DrawingState) -> DrawingState {
-    
-    for rule in rules {
-      if let newState = rule(input, state) {
-        return newState
-      }
-    }
-    return state
-  }
-}
-
-
 final class HyperView: UIView {
   var nib_H: NibMatrix
   @Binding var strokeData_H: PencilStrokesArray 
-  
-  private var lastFlattenTime: Date = .distantPast
   
   
   
@@ -74,10 +39,10 @@ final class HyperView: UIView {
     layer.drawsAsynchronously = true
     isUserInteractionEnabled = true
     isMultipleTouchEnabled = true 
-    if loadDataNeedsDisplay { 
+    
       drawFromStrokesData()
       loadDataNeedsDisplay = false
-    }
+    
     layer.setNeedsDisplay() 
   }
   
@@ -85,8 +50,7 @@ final class HyperView: UIView {
   var rawStrokeLayers: [CALayer] = [] 
   
   var drawingLayer: CAShapeLayer? 
-  var layerCount = 0 
-  let layerLimit: Int = 2<<12 
+  
   var loadDataNeedsDisplay: Bool = true 
   var state: DrawingState = DrawingState()
   
@@ -133,7 +97,11 @@ final class HyperView: UIView {
     
     guard window != nil, loadDataNeedsDisplay else { return }
     
-    drawFromStrokesData()
+    
+    DispatchQueue.main.async { [weak self] in
+      self?.drawFromStrokesData()
+    }
+    
     loadDataNeedsDisplay = false
     
     
@@ -174,6 +142,9 @@ final class HyperView: UIView {
   
   func renderStroke(_ stroke: PencilStroke, in layer: CALayer, offset: CGFloat = 0) {
     guard !stroke.isEmpty else { return }
+    
+    
+      
     
     let index = strokeData_H.firstIndex(of: stroke)
     if let index = index,
@@ -223,6 +194,7 @@ final class HyperView: UIView {
   
   private func addCurveLayer(from prev: PencilSample, to curr: PencilSample, prevPrev: PencilSample? = nil, next: PencilSample? = nil){
     let (fillColor, fillSize) = nib_H.map(curr)
+    
     
     let path = UIBezierPath()
     let layer = CAShapeLayer()
@@ -278,14 +250,10 @@ final class HyperView: UIView {
   }
   
   fileprivate func addSublayerAndCount(_ newLayer: CALayer) {
-    layerCount += 1
+    
     layer.addSublayer(newLayer)
     if state.isInputTransforming { 
       rawStrokeLayers.append(newLayer)
-    } else {
-      if self.layerCount > self.layerLimit {
-        self.imageFlatten()
-      }
     }
     
   }
@@ -310,6 +278,7 @@ final class HyperView: UIView {
   func drawFromStrokesData() {
     
     for (_, stroke) in self.strokeData_H.enumerated() {
+      
       renderStroke(stroke, in: layer)
     }
     
@@ -488,9 +457,6 @@ extension HyperView {
     case .equalizeColor:
       print("equalizer")
     }
-    if !state.isInputTransforming && layerCount > layerLimit {
-      flattenLayers()
-    }
     
     for newTouch in touches { 
       if state.selecting.active {
@@ -579,6 +545,11 @@ extension HyperView {
         }
       case .direct: 
         
+        state.strokesTransform?.reset()
+        state.isInputTransforming = false
+        sendCursorBox?(nil)
+        
+        
         print("           avgs of \(nib_H.avgRed.interval.count) red map out \(nib_H.avgRed.interval)")
         print("           avgs of \(nib_H.avgGreen.interval.count) avgGreen  out \(nib_H.avgGreen.interval)")
         print("           avgs of \(nib_H.avgBlue.interval.count) avgBlue  out \(nib_H.avgBlue.interval)")
@@ -591,29 +562,7 @@ extension HyperView {
         print("           avgs of \(nib_H.avgRoll.interval.count) avgRoll  out \(nib_H.avgRoll.interval)")
         state.fingerPosition = nil 
         self.fingerViewOn?(false) 
-        if newTouch.tapCount == 1 { 
-          
-          if state.isInputTransforming { 
-            state.strokesTransform?.reset() 
-            sendCursorBox?(nil) 
-            state.isInputTransforming = false 
-            
-          }
-
-        } else if newTouch.tapCount == 2 {
-          
-          if !state.isInputTransforming { 
-            self.state.strokesTransform = AnyTransform(StrokeToGaussian())
-            if let _ = state.strokesTransform {
-              state.isInputTransforming = true
-              let p = newTouch.location(in: self)
-              let s = CGSize(width: state.strokesTransform!.feedbackRect.width, height: state.strokesTransform!.feedbackRect.height) 
-              state.strokesTransform!.setFeedbackRect(to: CGRect(center: p, size: s))
-              sendCursorBox?(state.strokesTransform!.feedbackRect)
-              
-            }
-          }
-        }
+        
       case .indirect: 
         debugPrint("indirect", newTouch)
       case .indirectPointer:
@@ -626,11 +575,7 @@ extension HyperView {
     
     
     
-    
-    
-    if self.layerCount > self.layerLimit {
-      flattenLayers()
-    }
+
     
   }
 
@@ -647,139 +592,33 @@ extension HyperView {
       switch newTouch.type {
       case .pencil: 
         self.appendAs(final: newTouch, with: event) 
+        if state.isInputTransforming {
+          state.strokesTransform?.reset()
+          state.isInputTransforming = false
+        }
       case .direct: 
         state.strokesTransform?.reset()
+        state.isInputTransforming = false
       case .indirect: 
+        state.strokesTransform?.reset()
+        state.isInputTransforming = false
         debugPrint("indirect", newTouch)
       case .indirectPointer:
+        state.strokesTransform?.reset()
+        state.isInputTransforming = false
         debugPrint("indirectPointer", newTouch)
       @unknown default:
+        state.strokesTransform?.reset()
+        state.isInputTransforming = false
         debugPrint("Unknown input type -- fatal error...")
       }
     }
-  }
-  
-	
-	func imageFlatten() {
-		
-		
-		
-		
-		
-		
-		
-		
-			guard let image = self.captureViewImage() else {
-				
-				return
-			}
-			
-				self.clearLayers()
-				self.layerCount = 0
-				self.restoreViewFromImage(image)
-			
-		
-		
-		
-		
-		
-	}
-  
-  
-  fileprivate func flattenLayers() {
     
-    let now = Date()
-    guard now.timeIntervalSince(lastFlattenTime) > 0.3 else { return } 
-    
-    guard Thread.isMainThread else {
-      DispatchQueue.main.async {self.flattenLayers() }
-      return
+    if state.isInputTransforming {
+      state.strokesTransform?.reset()
+      state.isInputTransforming = false
+      sendCursorBox?(nil)
     }
-    
-    
-    rasterizedImageView?.isHidden = true
-    
-    let selfSize = self.layer.bounds.size 
-    let allStrokes = strokeData_H.value + [currentStroke]
-
-    let _ = UIGraphicsImageRenderer(bounds: self.bounds).image { context in
-      
-      self.layer.render(in: context.cgContext)
-    }
-    
-    
-    
-    
-    let renderingQueue = DispatchQueue(
-      label: "com.MoonStroke.strokeRendering",
-      qos: .userInitiated,
-      attributes: .concurrent)
-    let group = DispatchGroup()
-    
-    for (index, stroke) in allStrokes.enumerated() {
-      group.enter()
-      renderingQueue.async { [weak self] in
-        defer { group.leave() }
-        self?.preRenderStroke(stroke, atIndex: index, size: selfSize)
-      }
-    }
-    
-    group.notify(queue: .main) { [weak self] in
-      self?.finalizeFlattening()
-    }
-  }
-  
-  private func finalizeFlattening() {
-
-    let image = UIGraphicsImageRenderer(bounds: bounds).image { context in
-      
-      self.layer.render(in: context.cgContext)
-    }
-    
-    
-    let tempImageView = UIImageView(image: image)
-    tempImageView.contentMode = .scaleToFill
-    tempImageView.frame = bounds
-    tempImageView.alpha = 0
-    addSubview(tempImageView)
-    
-    
-    
-    UIView.transition(with: self, duration: 0.5, options: .transitionCrossDissolve) {
-      self.rasterizedImageView?.removeFromSuperview()
-      tempImageView.alpha = 1
-      self.rasterizedImageView = tempImageView
-    } completion: { _ in
-      self.rasterizedImageView = nil
-    }
-    
-
-    layer.sublayers?.forEach { $0.removeFromSuperlayer() }
-    rawStrokeLayers.removeAll()
-    layerCount = 0
-
-    
-    
-    
-  }
-  
-  fileprivate func clearLayers() {
-    
-    CATransaction.begin()
-    CATransaction.setDisableActions(true)
-    layer.displayIfNeeded()
-    CATransaction.commit()
-    
-    self.layer.sublayers?.forEach { $0.removeFromSuperlayer() }
-    
-    
-    rawStrokeLayers.removeAll()
-    
-    self.layerCount = 0
-
-    rasterizedImageView?.removeFromSuperview()
-    rasterizedImageView = nil
-    
   }
   
   func captureViewImage() -> UIImage? { 
@@ -800,8 +639,9 @@ extension HyperView {
     defer { layer.drawsAsynchronously = wasAsync }
     
     
+    let wasHidden = rasterizedImageView?.isHidden ?? false
     rasterizedImageView?.isHidden = true
-    defer { rasterizedImageView?.isHidden = false }
+    defer { rasterizedImageView?.isHidden = wasHidden }
       
 
     let renderer = UIGraphicsImageRenderer(bounds: bounds)
